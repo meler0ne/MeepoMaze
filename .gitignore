@@ -1,5 +1,10 @@
 cmake-build-debug/
+build/
+build-release/
 .vs/
 *.sln
 *.user
+*.exe
+*.out
 maze_save.txt
+.idea/
