@@ -2,9 +2,4 @@ cmake-build-debug/
 .vs/
 *.sln
 *.user
-frames/
-finish_frames/
-double_frames/
-*.png
-*.gif
 maze_save.txt
