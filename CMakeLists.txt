@@ -8,8 +8,16 @@ find_package(SFML COMPONENTS graphics window system REQUIRED)
 
 add_executable(MazeGenerator MazeGenerator.cpp)
 
-target_link_libraries(MazeGenerator SFML::Graphics SFML::Window SFML::System)
+add_custom_command(TARGET MazeGenerator POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/frames
+        ${CMAKE_CURRENT_BINARY_DIR}/frames
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/finish_frames
+        ${CMAKE_CURRENT_BINARY_DIR}/finish_frames
+        COMMAND ${CMAKE_COMMAND} -E copy
+        ${CMAKE_SOURCE_DIR}/*.png
+        ${CMAKE_CURRENT_BINARY_DIR}
+)
 
-if(WIN32)
-    set_target_properties(MazeGenerator PROPERTIES WIN32_EXECUTABLE TRUE)
-endif()
+target_link_libraries(MazeGenerator sfml-graphics sfml-window sfml-system)
