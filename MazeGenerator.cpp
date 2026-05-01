@@ -417,6 +417,13 @@ public:
         generateClassicImpl();
     }
 
+    ~Maze() {
+        meepoFrames.clear();
+        finishFrames.clear();
+        pathCells.clear();
+        grid.clear();
+    }
+
     void generateClassic() { generateClassicImpl(); }
     void generateCorridor() { generateCorridorImpl(); }
 
@@ -698,8 +705,7 @@ int main() {
                     case sf::Keyboard::Equal:
                         if (!maze->isAnimating() && W < 25) {
                             W++;
-                            H = H * W / (W-1);
-                            if (H < 5) H = 5;
+                            H = std::max(5, H * W / (W-1));
                             delete maze;
                             win.close();
                             win.create(sf::VideoMode(W * CELL_SIZE + PANEL, H * CELL_SIZE), "Meepo Maze", sf::Style::Titlebar | sf::Style::Close);
@@ -712,8 +718,7 @@ int main() {
                     case sf::Keyboard::Hyphen:
                         if (!maze->isAnimating() && W > 5) {
                             W--;
-                            H = H * W / (W+1);
-                            if (H < 5) H = 5;
+                            H = std::max(5, H * W / (W+1));
                             delete maze;
                             win.close();
                             win.create(sf::VideoMode(W * CELL_SIZE + PANEL, H * CELL_SIZE), "Meepo Maze", sf::Style::Titlebar | sf::Style::Close);
