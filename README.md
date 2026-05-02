@@ -27,7 +27,7 @@
 
 ## Скачать
 
-- [Windows ZIP](https://github.com/meler0ne/MeepoMaze/releases/latest)
+- [Windows ZIP](https://github.com/meler0ne/MeepoMaze/releases/tag/v1.0.0-Windows)
 - [Linux TAR.GZ](https://github.com/meler0ne/MeepoMaze/releases/latest)
 
 ## Ресурсы
