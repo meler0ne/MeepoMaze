@@ -14,6 +14,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <functional>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -55,8 +56,109 @@ void setAdaptiveFontSize(sf::Text& text, float maxWidth, int defaultSize = 16, i
     }
 }
 
+class BeautifulButton {
+    sf::RectangleShape shape;
+    sf::Text text;
+    sf::Font font;
+    sf::Color borderColor, topColor, bottomColor;
+    bool isHovered = false, isPressed = false;
+    float hoverAlpha = 0, pressAlpha = 0;
+    std::function<void()> onClick;
+
+    sf::Color interpolate(sf::Color a, sf::Color b, float t) {
+        return sf::Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t,
+                        a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+    }
+
+public:
+    BeautifulButton(const std::string& textStr, sf::Vector2f pos, sf::Vector2f size, std::function<void()> callback)
+        : onClick(callback) {
+        std::vector<std::string> fonts = {FONT_PATH, "/usr/share/fonts/TTF/DejaVuSans.ttf"};
+        for (auto& f : fonts) if (font.loadFromFile(f)) break;
+
+        shape.setSize(size);
+        shape.setPosition(pos);
+        shape.setOutlineThickness(2);
+
+        text.setFont(font);
+        text.setString(Rus(textStr.c_str()));
+        text.setCharacterSize(32);
+        text.setFillColor(sf::Color::White);
+        text.setStyle(sf::Text::Bold);
+
+        auto tb = text.getLocalBounds();
+        text.setOrigin(tb.left + tb.width / 2, tb.top + tb.height / 2);
+        text.setPosition(pos.x + size.x / 2, pos.y + size.y / 2);
+
+        borderColor = sf::Color(70, 130, 200);
+        topColor = sf::Color(60, 120, 190);
+        bottomColor = sf::Color(40, 90, 150);
+    }
+
+    void update(float dt) {
+        float th = isHovered ? 1 : 0, tp = isPressed ? 1 : 0;
+        hoverAlpha += (th - hoverAlpha) * dt * 12;
+        pressAlpha += (tp - pressAlpha) * dt * 15;
+
+        text.setPosition(shape.getPosition().x + shape.getSize().x / 2 + (isPressed ? 1 : 0),
+                        shape.getPosition().y + shape.getSize().y / 2 + (isPressed ? 1 : 0));
+
+        if (isHovered) {
+            shape.setOutlineColor(interpolate(borderColor, sf::Color(100, 180, 240), hoverAlpha));
+        } else {
+            shape.setOutlineColor(interpolate(borderColor, borderColor, hoverAlpha));
+        }
+    }
+
+    void draw(sf::RenderWindow& w) {
+        sf::Color colTop = interpolate(topColor, sf::Color(80, 150, 220), hoverAlpha);
+        sf::Color colBottom = interpolate(bottomColor, sf::Color(50, 100, 160), hoverAlpha);
+
+        if (pressAlpha > 0) {
+            colTop = interpolate(colTop, sf::Color(35, 80, 130), pressAlpha);
+            colBottom = interpolate(colBottom, sf::Color(30, 70, 110), pressAlpha);
+        }
+
+        shape.setFillColor(colTop);
+        w.draw(shape);
+
+        sf::VertexArray grad(sf::Quads, 4);
+        auto r = shape.getGlobalBounds();
+        grad[0] = sf::Vertex(sf::Vector2f(r.left, r.top), colTop);
+        grad[1] = sf::Vertex(sf::Vector2f(r.left + r.width, r.top), colTop);
+        grad[2] = sf::Vertex(sf::Vector2f(r.left + r.width, r.top + r.height), colBottom);
+        grad[3] = sf::Vertex(sf::Vector2f(r.left, r.top + r.height), colBottom);
+        w.draw(grad);
+
+        sf::Text shadowText = text;
+        shadowText.setFillColor(sf::Color(0, 0, 0, 80));
+        shadowText.setPosition(text.getPosition().x + 1, text.getPosition().y + 1);
+        w.draw(shadowText);
+
+        w.draw(text);
+    }
+
+    void handleEvent(const sf::Event& e, const sf::RenderWindow& w) {
+        sf::Vector2i mousePos;
+        if (e.type == sf::Event::MouseMoved)
+            mousePos = sf::Vector2i(e.mouseMove.x, e.mouseMove.y);
+        else if (e.type == sf::Event::MouseButtonPressed || e.type == sf::Event::MouseButtonReleased)
+            mousePos = sf::Vector2i(e.mouseButton.x, e.mouseButton.y);
+
+        isHovered = shape.getGlobalBounds().contains(mousePos.x, mousePos.y);
+
+        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left && isHovered)
+            isPressed = true;
+        if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left && isPressed && isHovered) {
+            if (onClick) onClick();
+            isPressed = false;
+        }
+        if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left)
+            isPressed = false;
+    }
+};
+
 class PathRibbon {
-private:
     sf::VertexArray ribbon, glow;
     float progress;
     std::vector<std::pair<int, int>> pathCells;
@@ -67,21 +169,13 @@ public:
     PathRibbon(int cellSize) : cellSize(cellSize), progress(0.0f) {}
 
     void setPath(const std::vector<std::pair<int, int>>& path, float prog) {
-        pathCells = path;
-        progress = prog;
-        updateRibbon();
+        pathCells = path; progress = prog; updateRibbon();
     }
 
-    void clear() {
-        pathCells.clear();
-        progress = 0.0f;
-        ribbon.clear();
-        glow.clear();
-    }
+    void clear() { pathCells.clear(); progress = 0.0f; ribbon.clear(); glow.clear(); }
 
     void updateRibbon() {
         if (pathCells.empty() || progress <= 0.001f) return;
-
         float totalSegments = pathCells.size() - 1;
         float visibleSegments = progress * totalSegments;
         if (visibleSegments < 0.01f) return;
@@ -104,7 +198,6 @@ public:
         ribbon.clear(); glow.clear();
         ribbon.setPrimitiveType(sf::TriangleStrip);
         glow.setPrimitiveType(sf::TriangleStrip);
-        float time = static_cast<float>(std::clock()) / CLOCKS_PER_SEC;
 
         for (size_t i = 0; i < points.size(); i++) {
             sf::Vector2f pos = points[i], dir;
@@ -154,7 +247,6 @@ struct Cell {
 };
 
 class Maze {
-private:
     int width, height, cellSize;
     std::vector<std::vector<Cell>> grid;
     std::string currentAlgo = "Классический";
@@ -165,16 +257,13 @@ private:
     sf::Clock animClock, frameTimer, finishTimer;
     std::vector<std::pair<int, int>> pathCells;
     PathRibbon pathRibbon;
-
     std::vector<sf::Texture> meepoFrames, finishFrames;
     int currentFrame = 0, finishFrame = 0;
     sf::Sprite meepoSprite, finishSprite;
     bool hasMeepo = false, hasFinish = false;
-
     sf::Font font;
     sf::Text startText, finishText;
     int startX, startY, finishX, finishY;
-
     float ANIM_SPEED = 0.02f;
     int CLICK_MARGIN = 8;
 
@@ -214,10 +303,10 @@ private:
             int nx = x + d[0], ny = y + d[1];
             if (nx >= 0 && nx < width && ny >= 0 && ny < height && !grid[ny][nx].visited) {
                 grid[y][x].walls[d[2]] = false;
-                if (d[2] == 0) { grid[ny][nx].walls[2] = false; }
-                else if (d[2] == 1) { grid[ny][nx].walls[3] = false; }
-                else if (d[2] == 2) { grid[ny][nx].walls[0] = false; }
-                else if (d[2] == 3) { grid[ny][nx].walls[1] = false; }
+                if (d[2] == 0) grid[ny][nx].walls[2] = false;
+                else if (d[2] == 1) grid[ny][nx].walls[3] = false;
+                else if (d[2] == 2) grid[ny][nx].walls[0] = false;
+                else if (d[2] == 3) grid[ny][nx].walls[1] = false;
                 carve(nx, ny);
             }
         }
@@ -232,7 +321,7 @@ private:
         while (isNear(startX, startY, finishX, finishY));
         carve(startX, startY);
         currentAlgo = "Классический";
-        lastPathLength = 0; lastSolveTime = 0.0f;
+        lastPathLength = lastSolveTime = 0.0f;
     }
 
     void generateCorridorImpl() {
@@ -245,7 +334,7 @@ private:
                 for (int w = 0; w < 4; w++) grid[y][x].walls[w] = false;
         for (int x = 0; x < width; x++) grid[0][x].walls[0] = grid[height-1][x].walls[2] = true;
         for (int y = 0; y < height; y++) grid[y][0].walls[3] = grid[y][width-1].walls[1] = true;
-        lastPathLength = 0; lastSolveTime = 0.0f;
+        lastPathLength = lastSolveTime = 0.0f;
     }
 
     float calcPathLength() {
@@ -311,8 +400,7 @@ private:
             std::reverse(pathCells.begin(), pathCells.end());
             lastPathLength = pathCells.size();
             float pathPixels = calcPathLength();
-            animDuration = pathPixels / 150.0f;
-            if (animDuration < 0.5f) animDuration = 0.5f;
+            animDuration = std::max(pathPixels / 150.0f, 0.5f);
             globalProgress = 0.0f; pathCompleted = false;
             animClock.restart();
         }
@@ -372,13 +460,9 @@ private:
         for (int i = 1; i <= 6; i++) {
             std::stringstream ss; ss << "frames/frame_" << std::setw(4) << std::setfill('0') << i << ".png";
             sf::Texture tex;
-            if (tex.loadFromFile(ss.str())) {
-                meepoFrames.push_back(tex);
-            } else {
-                break;
-            }
+            if (tex.loadFromFile(ss.str())) meepoFrames.push_back(tex);
+            else break;
         }
-
         if (!meepoFrames.empty()) {
             float scale = (cellSize - 2) / (float)meepoFrames[0].getSize().x;
             meepoSprite.setScale(scale, scale);
@@ -391,9 +475,7 @@ private:
         for (int i = 1; i <= 6; i++) {
             std::stringstream ss; ss << "finish_frames/frame_000" << i << ".png";
             sf::Texture tex;
-            if (tex.loadFromFile(ss.str())) {
-                finishFrames.push_back(tex);
-            }
+            if (tex.loadFromFile(ss.str())) finishFrames.push_back(tex);
         }
         if (!finishFrames.empty()) {
             float scale = (cellSize - 2) / (finishFrames[0].getSize().x / 2.0f);
@@ -409,24 +491,23 @@ public:
         grid.resize(height, std::vector<Cell>(width));
         startX = 0; startY = 0; finishX = width-1; finishY = height-1;
         font.loadFromFile(FONT_PATH);
-        startText.setFont(font); startText.setString(Rus("СТАРТ")); startText.setCharacterSize(14);
-        startText.setFillColor(sf::Color::White); startText.setStyle(sf::Text::Bold);
-        finishText.setFont(font); finishText.setString(Rus("ФИНИШ")); finishText.setCharacterSize(14);
-        finishText.setFillColor(sf::Color::White); finishText.setStyle(sf::Text::Bold);
+        startText.setFont(font);
+        startText.setString(Rus("СТАРТ"));
+        startText.setCharacterSize(14);
+        startText.setFillColor(sf::Color::White);
+        startText.setStyle(sf::Text::Bold);
+        finishText.setFont(font);
+        finishText.setString(Rus("ФИНИШ"));
+        finishText.setCharacterSize(14);
+        finishText.setFillColor(sf::Color::White);
+        finishText.setStyle(sf::Text::Bold);
         loadFrames();
         generateClassicImpl();
     }
 
-    ~Maze() {
-        meepoFrames.clear();
-        finishFrames.clear();
-        pathCells.clear();
-        grid.clear();
-    }
-
+    ~Maze() { meepoFrames.clear(); finishFrames.clear(); pathCells.clear(); grid.clear(); }
     void generateClassic() { generateClassicImpl(); }
     void generateCorridor() { generateCorridorImpl(); }
-
     void solve() { if (isSolving) return; findPath(); if (!pathCells.empty()) isSolving = true; }
     void clearPath() { resetPathData(); pathRibbon.clear(); }
 
@@ -478,7 +559,6 @@ public:
 
     void draw(sf::RenderWindow& window) {
         updateAnimation();
-
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 float x1 = x * cellSize, y1 = y * cellSize, x2 = x1 + cellSize, y2 = y1 + cellSize;
@@ -491,14 +571,11 @@ public:
                 if (grid[y][x].walls[1]) { wall.setPosition(x2-5, y1); window.draw(wall); }
             }
         }
-
         pathRibbon.draw(window);
-
         sf::RectangleShape startRect(sf::Vector2f(cellSize-6, cellSize-6));
         startRect.setFillColor(sf::Color(70,130,200,255));
         startRect.setPosition(startX*cellSize+3, startY*cellSize+3);
         window.draw(startRect);
-
         if (hasMeepo && !isSolving && !pathCompleted && (pathCells.empty() || globalProgress <= 0.001f)) {
             if (frameTimer.getElapsedTime().asSeconds() > 0.1f && !meepoFrames.empty()) {
                 currentFrame = (currentFrame+1) % meepoFrames.size();
@@ -508,17 +585,14 @@ public:
             meepoSprite.setPosition(startX*cellSize+cellSize/2.0f, startY*cellSize+cellSize/2.0f);
             window.draw(meepoSprite);
         }
-
         startText.setOrigin(startText.getLocalBounds().width/2, startText.getLocalBounds().height/2);
         startText.setPosition(startX*cellSize+cellSize/2.0f, startY*cellSize+cellSize/2.0f - cellSize/3.5f);
         window.draw(startText);
-
         if (hasMeepo && !pathCells.empty() && globalProgress > 0.001f) {
             sf::Vector2f pos = getHeadPos();
             meepoSprite.setPosition(pos.x, pos.y);
             window.draw(meepoSprite);
         }
-
         bool onFinish = false;
         if (!pathCells.empty() && globalProgress >= 0.99f) {
             sf::Vector2f head = getHeadPos();
@@ -531,12 +605,10 @@ public:
             finishRect.setPosition(finishX*cellSize+3, finishY*cellSize+3);
             window.draw(finishRect);
         }
-
         if (hasFinish) {
             finishSprite.setPosition(finishX*cellSize+cellSize/2.0f, finishY*cellSize+cellSize/2.0f);
             window.draw(finishSprite);
         }
-
         finishText.setOrigin(finishText.getLocalBounds().width/2, finishText.getLocalBounds().height/2);
         finishText.setPosition(finishX*cellSize+cellSize/2.0f, finishY*cellSize+cellSize/2.0f - cellSize/3.5f);
         window.draw(finishText);
@@ -544,7 +616,6 @@ public:
 };
 
 class BackgroundMaze {
-private:
     int w=25, h=18, cell=35;
     struct BgCell { bool walls[4] = {true,true,true,true}; };
     std::vector<std::vector<BgCell>> grid;
@@ -579,66 +650,54 @@ public:
 };
 
 class StartMenu {
-private:
     sf::Font font;
-    sf::Text title, playText, info;
-    sf::RectangleShape playBtn, bg, shadow;
+    sf::Text title, info;
+    sf::RectangleShape bg;
     BackgroundMaze bgMaze;
-    bool hover = false;
+    BeautifulButton* playButton;
+    sf::Clock clock;
+    bool buttonClicked = false;
 
 public:
     StartMenu() {
         font.loadFromFile(FONT_PATH);
-        bg.setSize(sf::Vector2f(1024,768)); bg.setFillColor(sf::Color(25,25,35,200));
-        title.setFont(font); title.setString(Rus("Meepo Maze")); title.setCharacterSize(52);
-        title.setFillColor(sf::Color(100,180,230)); title.setStyle(sf::Text::Bold);
+        bg.setSize(sf::Vector2f(1024,768));
+        bg.setFillColor(sf::Color(25,25,35,220));
+        title.setFont(font);
+        title.setString(Rus("Meepo Maze"));
+        title.setCharacterSize(72);
+        title.setFillColor(sf::Color(100, 180, 230));
+        title.setStyle(sf::Text::Bold);
         title.setOrigin(title.getLocalBounds().width/2, title.getLocalBounds().height/2);
-        title.setPosition(512,200);
-
-        shadow.setSize(sf::Vector2f(280,90)); shadow.setFillColor(sf::Color(0,0,0,80));
-        shadow.setOrigin(140,45); shadow.setPosition(514,406);
-        playBtn.setSize(sf::Vector2f(280,90)); playBtn.setFillColor(sf::Color(70,130,200));
-        playBtn.setOutlineThickness(3); playBtn.setOutlineColor(sf::Color(130,190,240));
-        playBtn.setOrigin(140,45); playBtn.setPosition(512,400);
-
-        playText.setFont(font); playText.setString(Rus("ИГРАТЬ")); playText.setCharacterSize(38);
-        playText.setFillColor(sf::Color::White); playText.setStyle(sf::Text::Bold);
-        playText.setOrigin(playText.getLocalBounds().width/2, playText.getLocalBounds().height/2);
-        playText.setPosition(512,400);
-
-        info.setFont(font); info.setString(Rus("Помоги Meepo найти братьев!"));
-        info.setCharacterSize(24); info.setFillColor(sf::Color(180,180,200));
+        title.setPosition(512, 200);
+        info.setFont(font);
+        info.setString(Rus("Помоги Meepo найти братьев!"));
+        info.setCharacterSize(22);
+        info.setFillColor(sf::Color(180, 180, 210));
         info.setOrigin(info.getLocalBounds().width/2, info.getLocalBounds().height/2);
-        info.setPosition(512,560);
+        info.setPosition(512, 580);
+        playButton = new BeautifulButton("▶  ИГРАТЬ", sf::Vector2f(362, 360), sf::Vector2f(300, 85), [this]() { buttonClicked = true; });
     }
+
+    ~StartMenu() { delete playButton; }
 
     bool run(sf::RenderWindow& win) {
         while (win.isOpen()) {
+            float dt = clock.restart().asSeconds();
             sf::Event ev;
             while (win.pollEvent(ev)) {
                 if (ev.type == sf::Event::Closed) { win.close(); return false; }
-                if (ev.type == sf::Event::MouseMoved) {
-                    sf::Vector2i m = sf::Mouse::getPosition(win);
-                    if (playBtn.getGlobalBounds().contains(m.x, m.y)) {
-                        if (!hover) {
-                            hover = true;
-                            playBtn.setFillColor(sf::Color(100,170,230));
-                            playBtn.setOutlineColor(sf::Color(180,220,255));
-                        }
-                    } else if (hover) {
-                        hover = false;
-                        playBtn.setFillColor(sf::Color(70,130,200));
-                        playBtn.setOutlineColor(sf::Color(130,190,240));
-                    }
-                }
-                if (ev.type == sf::Event::MouseButtonPressed && ev.mouseButton.button == sf::Mouse::Left) {
-                    sf::Vector2i m = sf::Mouse::getPosition(win);
-                    if (playBtn.getGlobalBounds().contains(m.x, m.y)) return true;
-                }
+                playButton->handleEvent(ev, win);
             }
+            if (buttonClicked) return true;
+            playButton->update(dt);
             bgMaze.update();
-            win.clear(); bgMaze.draw(win); win.draw(bg); win.draw(title);
-            win.draw(shadow); win.draw(playBtn); win.draw(playText); win.draw(info);
+            win.clear();
+            bgMaze.draw(win);
+            win.draw(bg);
+            win.draw(title);
+            playButton->draw(win);
+            win.draw(info);
             win.display();
         }
         return false;
@@ -659,19 +718,23 @@ int main() {
     if (!menu.run(menuWin)) return 0;
     menuWin.close();
 
-    int W = 15, H = 10, CELL_SIZE = 48, PANEL = 370;
+    int W = 15, H = 15, CELL_SIZE = 48, PANEL = 370;
 
     sf::RenderWindow win(sf::VideoMode(W * CELL_SIZE + PANEL, H * CELL_SIZE), "Meepo Maze", sf::Style::Titlebar | sf::Style::Close);
     win.setFramerateLimit(60);
     win.setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
 
     Maze* maze = new Maze(W, H, CELL_SIZE);
-
-    sf::Font font; font.loadFromFile(FONT_PATH);
+    sf::Font font;
+    font.loadFromFile(FONT_PATH);
     sf::Text title, info;
-    title.setFont(font); title.setString(Rus("Помоги Meepo найти дорогу к братьям!"));
-    title.setFillColor(sf::Color(100,180,220)); title.setStyle(sf::Text::Bold);
-    info.setFont(font); info.setCharacterSize(14); info.setFillColor(sf::Color(220,220,240));
+    title.setFont(font);
+    title.setString(Rus("Помоги Meepo найти дорогу к братьям!"));
+    title.setFillColor(sf::Color(100,180,220));
+    title.setStyle(sf::Text::Bold);
+    info.setFont(font);
+    info.setCharacterSize(14);
+    info.setFillColor(sf::Color(220,220,240));
 
     bool mousePressed = false;
     std::string saveFile = "maze_save.txt";
@@ -705,7 +768,7 @@ int main() {
                     case sf::Keyboard::Equal:
                         if (!maze->isAnimating() && W < 25) {
                             W++;
-                            H = std::max(5, H * W / (W-1));
+                            H = W;
                             delete maze;
                             win.close();
                             win.create(sf::VideoMode(W * CELL_SIZE + PANEL, H * CELL_SIZE), "Meepo Maze", sf::Style::Titlebar | sf::Style::Close);
@@ -718,7 +781,7 @@ int main() {
                     case sf::Keyboard::Hyphen:
                         if (!maze->isAnimating() && W > 5) {
                             W--;
-                            H = std::max(5, H * W / (W+1));
+                            H = W;
                             delete maze;
                             win.close();
                             win.create(sf::VideoMode(W * CELL_SIZE + PANEL, H * CELL_SIZE), "Meepo Maze", sf::Style::Titlebar | sf::Style::Close);
@@ -780,7 +843,8 @@ int main() {
         setAdaptiveFontSize(title, titleMaxWidth, 16, 10);
         title.setPosition(W * CELL_SIZE + 10, 10);
 
-        win.draw(title); win.draw(info);
+        win.draw(title);
+        win.draw(info);
         win.display();
     }
 

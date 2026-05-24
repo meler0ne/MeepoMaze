@@ -4,13 +4,14 @@ project(MazeGenerator)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(SFML_DIR "/opt/sfml2/lib/cmake/SFML")
 
 if(WIN32)
     set(SFML_STATIC_LIBRARIES TRUE)
     add_definitions(-DSFML_STATIC)
 endif()
 
-find_package(SFML COMPONENTS graphics window system REQUIRED)
+find_package(SFML CONFIG REQUIRED COMPONENTS graphics window system)
 
 add_executable(MazeGenerator MazeGenerator.cpp)
 
